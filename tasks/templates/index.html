@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Task Tracker Асеев Н.С.</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+  </head>
+  <body>
+    {% csrf_token %}
+      <div class="container">
+        <br>
+        <h2><strong>Task Tracker Асеев Н.С. 📝</strong></h2>
+
+        <br>
+        <h4>Мои задачи на сегодня (01.10.2026)</h4>
+         <ul class="list-group">
+
+            <li class="list-group-item mb-2">
+              1. Прочитать лекцию по Django.
+            </li> <!-- Что это означает? -->
+            <li class="list-group-item mb-2">
+              2. Рассмотреть пример шаблона Primer3_Korneev на GitHub.
+            </li>
+            <li class="list-group-item mb-2">
+              3. Выполнить практическую работу по Django в Replit.
+            </li>
+            <li class="list-group-item mb-2">
+              4. Создать секретный ключ FIREBASE_API_KEY в Replit.
+            </li>
+            <li class="list-group-item mb-2">
+              5. Решить задачу №10 (с. 20) на циклы for и while.
+            </li>
+            <li class="list-group-item mb-2">
+              6. Решить задачи №1–5 (стр. 29).
+            </li>
+            <li class="list-group-item mb-2">
+              7. Подготовить отчёт по практической работе в Word.
+            </li>
+            <li class="list-group-item mb-2">
+              8. Отправить отчёт и ссылку на реплику преподавателю.
+            </li>
+
+        </ul>
+        <!-- П.14. Изменения в строках 19, 24–36 (соседа не было, поэтому код сравнивался
+             с исходником github.com/nikolainv/Primer3_Korneev, tasks/templates/index.html):
+             • строка 19: <ul class="list-group"> — без изменений, список Bootstrap сохранён;
+             • строки 24–29: теги <li> и </li> те же, в строках 25 и 28 заменён текст пунктов 2 и 3
+               («Рассмотреть пример шаблона по Django», «Создать bash скрипт…» → мои задачи);
+             • строки 30–36: вместо пустых строк и закрывающих тегов </ul> и </div> добавлены
+               пункты 4, 5 и начало пункта 6, а теги </ul> и </div> сместились ниже.
+             Оценка: изменения корректны — у каждого <li> есть закрывающий </li>, все пункты
+             находятся внутри <ul>, классы list-group-item mb-2 сохранены, нумерация сквозная,
+             страница открывается без ошибок. -->
+        <!-- П.16. Вопрос к строке 23 (мой номер в списке группы 3 + 20 = 23): «Что это означает?»
+             Ответ: </li> — закрывающий тег элемента списка. Он завершает пункт
+             «1. Прочитать лекцию по Django.», который открыт в строке 21 тегом
+             <li class="list-group-item mb-2">. Соседа не было, поэтому ответ дан самостоятельно,
+             а оценку ответа соседа по 5-балльной шкале поставить было некому. -->
+
+        <br>
+        <h4>Этапы практической работы (п. 2–11)</h4>
+        <ul class="list-group">
+            <li class="list-group-item mb-2">
+              2. Создать новую реплику (Repl) на основе шаблона Django.
+            </li>
+            <li class="list-group-item mb-2">
+              3. Создать приложение tasks командой python manage.py startapp tasks.
+            </li>
+            <li class="list-group-item mb-2">
+              4. Подключить приложение tasks в INSTALLED_APPS (django_project/settings.py).
+            </li>
+            <li class="list-group-item mb-2">
+              5. Добавить маршрут path("", views.index) в django_project/urls.py.
+            </li>
+            <li class="list-group-item mb-2">
+              6. Добавить в tasks/views.py логику представления, которая возвращает страницу index.html.
+            </li>
+            <li class="list-group-item mb-2">
+              7. Создать папку templates внутри приложения tasks и файл index.html в ней.
+            </li>
+            <li class="list-group-item mb-2">
+              8. Написать в index.html код приложения из репозитория github.com/nikolainv/Primer3_Korneev.
+            </li>
+            <li class="list-group-item mb-2">
+              9. Запустить реплику и ознакомиться с приложением.
+            </li>
+            <li class="list-group-item mb-2">
+              10. Изменить название приложения: «Task Tracker Асеев Н.С.».
+            </li>
+            <li class="list-group-item mb-2">
+              11. Оформить разделы приложения как этапы задач на сегодня (8 задач).
+            </li>
+        </ul>
+
+        <br>
+        <h4>Последний раздел: секретный ключ (п. 13)</h4>
+        <ul class="list-group">
+            <li class="list-group-item list-group-item-warning mb-2">
+              FIREBASE_API_KEY = {{ firebase_api_key }}
+            </li>
+        </ul>
+
+
+
+      </div>
+
+
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+
+
+
+  </body>
+</html>

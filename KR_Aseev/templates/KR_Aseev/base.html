@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!-- КР (Асеев Н.С.): базовый шаблон мини-дашборда в стиле Grafana -->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}КР — Асеев Н.С.{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --gf-panel: rgba(16, 18, 34, 0.58);
+      --gf-border: rgba(255, 255, 255, 0.09);
+      --gf-text: #d8d9e6;
+      --gf-muted: #9a9cb4;
+      --gf-blue: #5794f2;
+      --gf-red: #f2495c;
+    }
+    /* Градиентный фон страницы */
+    body {
+      min-height: 100vh;
+      color: var(--gf-text);
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 13px;
+      background:
+        radial-gradient(1000px 620px at 0% 0%, rgba(99, 102, 241, 0.60), transparent 60%),
+        radial-gradient(900px 620px at 100% 0%, rgba(236, 72, 153, 0.48), transparent 60%),
+        radial-gradient(1000px 700px at 100% 100%, rgba(20, 184, 166, 0.42), transparent 60%),
+        radial-gradient(900px 640px at 0% 100%, rgba(59, 130, 246, 0.45), transparent 60%),
+        linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      background-attachment: fixed;
+    }
+    /* Верхняя панель, как в Grafana */
+    .gf-topbar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 18px; background: rgba(12, 12, 32, 0.55); backdrop-filter: blur(12px); border-bottom: 1px solid var(--gf-border); }
+    .gf-logo { width: 26px; height: 26px; border-radius: 8px; background: conic-gradient(from 200deg, #f05a28, #fbca0a, #f05a28); box-shadow: 0 0 14px rgba(251, 202, 10, 0.45); }
+    .gf-crumbs { color: var(--gf-muted); font-size: 14px; }
+    .gf-crumbs b { color: #fff; font-weight: 600; }
+    .gf-time { margin-left: auto; padding: 4px 10px; border: 1px solid var(--gf-border); border-radius: 6px; background: rgba(255, 255, 255, 0.04); }
+    /* Панели дашборда («стекло» поверх градиента) */
+    .panel { height: 100%; padding: 12px 14px 14px; background: var(--gf-panel); border: 1px solid var(--gf-border); border-radius: 12px; backdrop-filter: blur(16px) saturate(140%); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-bottom: 8px; }
+    .panel-title { font-size: 14px; font-weight: 600; color: #fff; }
+    .panel-desc { font-size: 11.5px; color: var(--gf-muted); }
+    .stat { position: relative; overflow: hidden; }
+    .stat::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--accent, var(--gf-blue)); box-shadow: 0 0 12px var(--accent, var(--gf-blue)); }
+    .stat-value { margin: 4px 0 2px; font-size: 28px; font-weight: 700; line-height: 1.15; color: var(--accent, #fff); text-shadow: 0 0 18px color-mix(in srgb, var(--accent, #fff) 45%, transparent); }
+    .chart-box { position: relative; height: 240px; }
+    /* Строки для ввода данных */
+    .var-row { display: grid; grid-template-columns: minmax(230px, 36%) 1fr; gap: 6px 16px; align-items: center; padding: 8px 0; border-top: 1px dashed var(--gf-border); }
+    .var-name { display: block; font-weight: 600; color: #fff; }
+    .var-hint { display: block; font-size: 11.5px; color: var(--gf-muted); }
+    .gf-input { background: rgba(5, 7, 14, 0.75) !important; border-color: rgba(255, 255, 255, 0.14) !important; color: #fff !important; font-family: "Roboto Mono", Consolas, monospace; }
+    .gf-input:focus { box-shadow: 0 0 0 0.2rem rgba(87, 148, 242, 0.35) !important; }
+    .gf-unit { min-width: 80px; justify-content: center; background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); color: var(--gf-muted); }
+    .btn-gf { border: none; color: #fff; background: linear-gradient(135deg, #3d71d9, #8f5ad8); box-shadow: 0 4px 14px rgba(87, 148, 242, 0.35); }
+    .btn-gf:hover { color: #fff; filter: brightness(1.12); }
+    .btn-gf-secondary { color: var(--gf-text); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--gf-border); }
+    .btn-gf-secondary:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+    .var-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--gf-border); }
+    .gf-error { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(242, 73, 92, 0.15); border: 1px solid var(--gf-red); color: #ff9aa6; }
+    /* Таблицы */
+    .gf-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .gf-table th { padding: 7px 8px; color: var(--gf-muted); font-weight: 600; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--gf-border); }
+    .gf-table td { padding: 6px 8px; color: var(--gf-text); border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-variant-numeric: tabular-nums; }
+    .gf-table tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
+    .badge-status { display: inline-block; min-width: 50px; padding: 2px 8px; border-radius: 4px; color: #111217; font-size: 11px; font-weight: 700; text-align: center; }
+    footer { color: var(--gf-muted); font-size: 11.5px; }
+    /* Заголовок страницы, панель с описанием паттерна и столбец с реакцией паттерна */
+    .page-head h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #fff; text-shadow: 0 0 24px rgba(99, 102, 241, 0.6); }
+    .page-head p { margin: 0; color: var(--gf-muted); }
+    .pattern ol { margin: 0 0 8px; padding-left: 18px; }
+    .pattern li { margin-bottom: 6px; color: var(--gf-text); }
+    .pattern b { color: #fff; }
+    .gf-table td.action { min-width: 260px; color: var(--gf-muted); }
+    @media (max-width: 768px) { .var-row { grid-template-columns: 1fr; } .gf-time { margin-left: 0; } }
+  </style>
+</head>
+<body>
+  <header class="gf-topbar">
+    <div class="gf-logo"></div>
+    <div class="gf-crumbs">Дашборды › <b>КР · Хранилище больших данных: защита от потери информации</b></div>
+    <div class="gf-time">Период: <span id="range">—</span></div>
+    <span class="panel-desc" id="updated"></span>
+    <button class="btn btn-sm btn-gf" type="submit" form="metricsForm">⟳ Обновить</button>
+  </header>
+  <main class="container-fluid px-3 py-3">
+    {% block content %}{% endblock %}
+    <footer class="mt-3">КР · Асеев Н.С. · тема 17 · Django + Chart.js · расчёты выполняет сервер Django (API /kr/api/metrics/)</footer>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

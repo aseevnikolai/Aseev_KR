@@ -1,0 +1,342 @@
+{% extends "KR_Aseev/base.html" %}
+{% comment %}КР (Асеев Н.С.), тема 17: дашборд согласованности узлов хранилища больших данных{% endcomment %}
+
+{% block title %}КР · Тема 17: защита от потери данных — Асеев Н.С.{% endblock %}
+
+{% block content %}
+<!-- Заголовок: тема индивидуального задания -->
+<div class="page-head mb-3">
+  <h1>Защита от потери данных при рассогласовании узлов хранилища</h1>
+  <p>Тема 17 · паттерн «кворумная запись + журнал WAL + сверка реплик» · кластер из {{ nodes_total }} узлов, кворум — {{ quorum }}</p>
+</div>
+
+<!-- Строки для ввода данных: каждая строка — один показатель кластера по часам -->
+<section class="panel mb-3">
+  <div class="panel-head">
+    <span class="panel-title">Исходные данные: почасовые показатели кластера хранилища</span>
+    <span class="panel-desc">Числа через запятую — по одному на каждый час, дробные — через точку. После ввода нажмите «Обновить» рядом со строкой</span>
+  </div>
+  <form id="metricsForm" autocomplete="off">
+    {% for row in rows %}
+    <div class="var-row">
+      <label for="in-{{ row.key }}">
+        <span class="var-name">{{ forloop.counter }}. {{ row.label }}, {{ row.unit }}</span>
+        <span class="var-hint">{{ row.hint }}</span>
+      </label>
+      <div class="input-group input-group-sm">
+        <input id="in-{{ row.key }}" name="{{ row.key }}" class="form-control gf-input" value="{{ row.default }}">
+        <span class="input-group-text gf-unit">{{ row.unit }}</span>
+        <button class="btn btn-gf" type="submit">Обновить</button>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="var-footer">
+      <label class="var-name" for="in-start">Начало периода:</label>
+      <div class="input-group input-group-sm" style="width: 130px">
+        <input id="in-start" name="start" type="number" min="0" max="23" value="{{ start_hour }}" class="form-control gf-input">
+        <span class="input-group-text gf-unit" style="min-width: 0">:00</span>
+      </div>
+      <span class="var-hint ms-md-3">Готовые сценарии:</span>
+      <button type="button" class="btn btn-sm btn-gf-secondary" data-preset="normal">Штатный режим</button>
+      <button type="button" class="btn btn-sm btn-gf-secondary" data-preset="failure">Сбой узла</button>
+      <button type="button" class="btn btn-sm btn-gf-secondary" data-preset="split">Потеря кворума</button>
+    </div>
+  </form>
+  <div id="error" class="gf-error d-none"></div>
+</section>
+
+<!-- Stat-панели: главные цифры за период -->
+<section class="row g-3 mb-3" id="stats"></section>
+
+<!-- Графики: панели Time series, Pie chart и Bar chart, как в Grafana -->
+<section class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 1. Записи под угрозой потери</span><span class="panel-desc">Операции, ещё не скопированные на реплики (поток × задержка): столько записей пропадёт при отказе основного узла</span></div>
+      <div class="chart-box"><canvas id="chartRisk"></canvas></div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 2. Согласованность данных между узлами</span><span class="panel-desc">Доля записей, одинаковых на всех репликах</span></div>
+      <div class="chart-box"><canvas id="chartConsistency"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="row g-3 mb-3">
+  <div class="col-xl-6">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 3. Задержка репликации, с</span><span class="panel-desc">Насколько реплики отстают от основного узла: жёлтый пунктир — 5 с, красный — 15 с</span></div>
+      <div class="chart-box"><canvas id="chartLag"></canvas></div>
+    </div>
+  </div>
+  <div class="col-xl-6">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 4. Узлы хранилища в строю</span><span class="panel-desc">Для кворумной записи нужно не меньше {{ quorum }} узлов из {{ nodes_total }}; ниже пунктира запись приостанавливается</span></div>
+      <div class="chart-box"><canvas id="chartNodes"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="row g-3 mb-3">
+  <div class="col-xl-6">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 5. Рассогласованные записи за час</span><span class="panel-desc">Разные версии записей на узлах, найденные сверкой контрольных сумм: жёлтый — от 50, красный — от 300</span></div>
+      <div class="chart-box"><canvas id="chartConflicts"></canvas></div>
+    </div>
+  </div>
+  <div class="col-xl-6">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">График 6. Поток записи, тыс. операций в минуту</span><span class="panel-desc">Нагрузка на хранилище: чем больше поток, тем больше данных под угрозой при отставании реплик</span></div>
+      <div class="chart-box"><canvas id="chartOps"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="row g-3 mb-3">
+  <div class="col-xl-7">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Таблица 1. Статистика по метрикам</span><span class="panel-desc">Тренд — изменение последнего часа относительно первого</span></div>
+      <div class="table-responsive">
+        <table class="gf-table">
+          <thead><tr><th>Метрика</th><th>Мин</th><th>Среднее</th><th>Макс</th><th>Последний час</th><th>Тренд</th></tr></thead>
+          <tbody id="metricsTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="panel pattern">
+      <div class="panel-head"><span class="panel-title">Паттерн защиты от потери данных (тема 17)</span></div>
+      <ol>
+        <li><b>Журнал упреждающей записи (WAL).</b> Каждая операция сначала фиксируется в журнале — после сбоя узла её можно повторить.</li>
+        <li><b>Кворумная запись.</b> Запись подтверждается, когда её сохранили не меньше {{ quorum }} из {{ nodes_total }} узлов (W = {{ quorum }}); чтение тоже по кворуму (R = {{ quorum }}), W + R &gt; N — клиент всегда видит последнюю версию.</li>
+        <li><b>Сверка реплик.</b> Узлы сравнивают контрольные суммы, рассогласованные записи восстанавливаются с актуальной реплики (read repair).</li>
+        <li><b>Безопасная остановка.</b> Если в строю меньше {{ quorum }} узлов, запись приостанавливается и копится в журнале — данные не теряются.</li>
+      </ol>
+      <div class="panel-desc">Пороги: задержка от 5 с — WARN, от 15 с — CRIT; рассогласований за час от 50 — WARN, от 300 — CRIT; под угрозой от 2 000 записей — WARN, от 10 000 — CRIT; ровно {{ quorum }} узла — WARN, меньше — CRIT.</div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><span class="panel-title">Таблица 2. Сводка по часам и реакция паттерна</span><span class="panel-desc">OK — норма, WARN — превышен порог предупреждения, CRIT — критическое состояние</span></div>
+  <div class="table-responsive">
+    <table class="gf-table">
+      <thead><tr><th>Час</th><th>Поток, тыс. оп/мин</th><th>Задержка, с</th><th>Рассогласовано, шт.</th><th>Узлов в строю</th><th>Под угрозой, шт.</th><th>Статус</th><th>Реакция паттерна</th></tr></thead>
+      <tbody id="hoursTable"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// КР (Асеев Н.С.), тема 17: получение расчётов с сервера Django и отрисовка графиков Chart.js
+const API_URL = "{% url 'kr:metrics' %}";
+const COLORS = {green: '#73bf69', yellow: '#fade2a', orange: '#ff9830', red: '#f2495c', blue: '#5794f2', purple: '#b877d9'};
+const STATUS_COLOR = {ok: COLORS.green, warn: COLORS.yellow, crit: COLORS.red, info: COLORS.blue};
+const STATUS_TEXT = {ok: 'OK', warn: 'WARN', crit: 'CRIT'};
+// Готовые сценарии работы кластера хранилища (8 часов)
+const PRESETS = {
+  normal: {ops: '10, 14, 18, 22, 25, 24, 20, 15', lag: '0.8, 0.9, 1.1, 1.4, 1.6, 1.5, 1.2, 0.9', conflicts: '1, 2, 2, 3, 4, 3, 2, 1', nodes: '5, 5, 5, 5, 5, 5, 5, 5'},
+  failure: {ops: '12, 18, 26, 34, 41, 38, 30, 22', lag: '1.2, 1.5, 2.8, 6.5, 16, 9, 3.1, 1.8', conflicts: '4, 6, 15, 80, 420, 260, 40, 9', nodes: '5, 5, 5, 4, 3, 4, 5, 5'},
+  split: {ops: '15, 22, 30, 38, 44, 40, 28, 18', lag: '1.5, 2.5, 7, 18, 35, 28, 12, 4', conflicts: '5, 12, 60, 350, 1200, 900, 240, 30', nodes: '5, 5, 4, 3, 2, 2, 4, 5'},
+};
+const numberFormat = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 2});
+const compactFormat = new Intl.NumberFormat('ru-RU', {notation: 'compact', maximumFractionDigits: 1});
+const percentFormat = new Intl.NumberFormat('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 4});
+const fmt = value => numberFormat.format(value);
+
+// Тёмная тема графиков, как в Grafana
+Chart.defaults.color = '#9a9cb4';
+Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.07)';
+Chart.defaults.font.family = 'Inter, "Segoe UI", Roboto, Arial, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.maintainAspectRatio = false;
+Chart.defaults.plugins.legend.labels.boxWidth = 10;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.tooltip.mode = 'index';
+Chart.defaults.plugins.tooltip.intersect = false;
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(13, 15, 24, 0.92)';
+Chart.defaults.plugins.tooltip.borderColor = 'rgba(255, 255, 255, 0.15)';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+
+// Плагин «неонового» свечения линий
+Chart.register({
+  id: 'glow',
+  beforeDatasetDraw(chart, args) {
+    const dataset = chart.data.datasets[args.index];
+    chart.ctx.save();
+    if (!dataset.borderDash && chart.config.type === 'line') {
+      chart.ctx.shadowColor = dataset.borderColor;
+      chart.ctx.shadowBlur = 14;
+    }
+  },
+  afterDatasetDraw(chart) { chart.ctx.restore(); },
+});
+
+// Подпись в центре кольцевой диаграммы
+const centerText = {
+  id: 'centerText',
+  afterDraw(chart, args, options) {
+    const {ctx, chartArea: area} = chart;
+    const x = (area.left + area.right) / 2;
+    const y = (area.top + area.bottom) / 2;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = options.color;
+    ctx.font = '700 20px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(options.value, x, y + 2);
+    ctx.fillStyle = '#9a9cb4';
+    ctx.font = '11px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(options.label, x, y + 20);
+    ctx.restore();
+  },
+};
+
+const charts = {};
+function draw(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+// Градиентная заливка под линией (панель Time series)
+function fillGradient(color) {
+  return ({chart}) => {
+    const area = chart.chartArea;
+    if (!area) return color + '33';
+    const gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    gradient.addColorStop(0, color + '88');
+    gradient.addColorStop(1, color + '00');
+    return gradient;
+  };
+}
+
+function line(label, data, color) {
+  return {label, data, borderColor: color, backgroundColor: fillGradient(color), fill: true, tension: 0.4,
+          borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: color, pointBorderColor: '#0b1022', pointHoverRadius: 6};
+}
+
+function threshold(label, value, count, color) {
+  return {type: 'line', label, data: Array(count).fill(value), borderColor: color, borderDash: [6, 5], borderWidth: 1.5,
+          pointRadius: 0, pointHoverRadius: 0, fill: false};
+}
+
+function axes(unit, extra = {}) {
+  return {x: {grid: {display: false}}, y: {beginAtZero: true, ...extra, ticks: {callback: value => fmt(value) + ' ' + unit}}};
+}
+
+function levelOf(value, [warn, crit]) {
+  return value >= crit ? 'crit' : value >= warn ? 'warn' : 'ok';
+}
+
+function nodesLevel(nodes, quorum) {
+  return nodes < quorum ? 'crit' : nodes === quorum ? 'warn' : 'ok';
+}
+
+function bars(label, data, colors) {
+  return {label, data, backgroundColor: colors.map(color => color + 'b3'), borderColor: colors, borderWidth: 1.5, borderRadius: 6};
+}
+
+function render(d) {
+  const labels = d.labels, count = labels.length, s = d.series, t = d.thresholds, sum = d.summary;
+  const quorum = d.cluster.quorum, total = d.cluster.nodes_total;
+  const consistencyLevel = sum.consistency >= 99.995 ? 'ok' : sum.consistency >= 99.985 ? 'warn' : 'crit';
+
+  draw('chartRisk', {type: 'line', data: {labels, datasets: [
+      line('Записей под угрозой', d.at_risk, COLORS.orange),
+      threshold(`Предупреждение ${fmt(t.at_risk[0])}`, t.at_risk[0], count, COLORS.yellow),
+      threshold(`Критично ${fmt(t.at_risk[1])}`, t.at_risk[1], count, COLORS.red)]},
+    options: {scales: axes('шт.')}});
+
+  draw('chartConsistency', {type: 'doughnut',
+    data: {labels: ['Согласованные', 'Рассогласованные'], datasets: [{data: [sum.total_writes - sum.total_conflicts, sum.total_conflicts],
+      backgroundColor: [COLORS.green, COLORS.red], borderColor: 'rgba(11, 16, 34, 0.9)', borderWidth: 3, hoverOffset: 8}]},
+    options: {cutout: '70%', plugins: {legend: {position: 'bottom'},
+      centerText: {value: percentFormat.format(sum.consistency) + ' %', label: 'согласованность', color: STATUS_COLOR[consistencyLevel]},
+      tooltip: {mode: 'nearest', callbacks: {label: c => ` ${c.label}: ${fmt(c.raw)} записей`}}}},
+    plugins: [centerText]});
+
+  draw('chartLag', {type: 'line', data: {labels, datasets: [
+      line('Задержка репликации', s.lag, COLORS.blue),
+      threshold(`Предупреждение ${t.lag[0]} с`, t.lag[0], count, COLORS.yellow),
+      threshold(`Критично ${t.lag[1]} с`, t.lag[1], count, COLORS.red)]},
+    options: {scales: axes('с')}});
+
+  draw('chartNodes', {type: 'bar', data: {labels, datasets: [
+      bars('Узлов в строю', s.nodes, s.nodes.map(n => STATUS_COLOR[nodesLevel(n, quorum)])),
+      threshold(`Кворум: ${quorum} из ${total}`, quorum, count, COLORS.red)]},
+    options: {scales: {x: {grid: {display: false}}, y: {beginAtZero: true, max: total, ticks: {stepSize: 1, callback: value => value + ' шт.'}}}}});
+
+  draw('chartConflicts', {type: 'bar', data: {labels, datasets: [
+      bars('Рассогласованные записи', s.conflicts, s.conflicts.map(value => STATUS_COLOR[levelOf(value, t.conflicts)]))]},
+    options: {scales: axes('шт.'), plugins: {legend: {display: false}}}});
+
+  draw('chartOps', {type: 'line', data: {labels, datasets: [line('Поток записи', s.ops, COLORS.green)]},
+    options: {scales: axes('тыс./мин'), plugins: {legend: {display: false}}}});
+
+  renderStats(d, consistencyLevel);
+  renderTables(d);
+}
+
+// Stat-панели: значение и цвет по порогам
+function renderStats(d, consistencyLevel) {
+  const sum = d.summary, t = d.thresholds, quorum = d.cluster.quorum, total = d.cluster.nodes_total;
+  const cards = [
+    ['Операций записи за период', compactFormat.format(sum.total_writes), 'info', `за ${sum.hours} ч работы кластера`],
+    ['Средняя задержка репликации', fmt(sum.avg_lag) + ' с', levelOf(sum.avg_lag, t.lag), `порог предупреждения — ${t.lag[0]} с`],
+    ['Рассогласованных записей', fmt(sum.total_conflicts), levelOf(sum.max_conflicts, t.conflicts), 'найдено сверкой реплик'],
+    ['Согласованность данных', percentFormat.format(sum.consistency) + ' %', consistencyLevel, 'записи одинаковы на всех узлах'],
+    ['Минимум узлов в строю', `${sum.min_nodes} из ${total}`, nodesLevel(sum.min_nodes, quorum), `кворум — ${quorum} узла`],
+    ['Пик записей под угрозой', fmt(sum.peak_at_risk), levelOf(sum.peak_at_risk, t.at_risk), 'при отказе основного узла'],
+  ];
+  document.getElementById('stats').innerHTML = cards.map(([title, value, status, note]) => `
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="panel stat" style="--accent: ${STATUS_COLOR[status]}">
+        <div class="panel-title">${title}</div>
+        <div class="stat-value">${value}</div>
+        <div class="panel-desc">${note}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderTables(d) {
+  document.getElementById('metricsTable').innerHTML = d.table.map(m => {
+    const arrow = m.trend > 0 ? '▲' : m.trend < 0 ? '▼' : '■';
+    return `<tr><td>${m.metric}, ${m.unit}</td><td>${fmt(m.min)}</td><td>${fmt(m.avg)}</td><td>${fmt(m.max)}</td><td>${fmt(m.last)}</td><td>${arrow} ${fmt(m.trend)} %</td></tr>`;
+  }).join('');
+  document.getElementById('hoursTable').innerHTML = d.hours.map(h => `
+    <tr><td>${h.time}</td><td>${fmt(h.ops)}</td><td>${fmt(h.lag)}</td><td>${fmt(h.conflicts)}</td><td>${h.nodes} из ${d.cluster.nodes_total}</td><td>${fmt(h.at_risk)}</td>
+      <td><span class="badge-status" style="background: ${STATUS_COLOR[h.status]}">${STATUS_TEXT[h.status]}</span></td><td class="action">${h.action}</td></tr>`).join('');
+}
+
+// Кнопка «Обновить»: отправляем строки на сервер Django и перерисовываем дашборд
+const form = document.getElementById('metricsForm');
+const errorBox = document.getElementById('error');
+
+async function update() {
+  errorBox.classList.add('d-none');
+  try {
+    const params = new URLSearchParams(new FormData(form));
+    const response = await fetch(`${API_URL}?${params}`);
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error);
+    render(data);
+    document.getElementById('range').textContent = `${data.labels[0]} – ${data.labels[data.labels.length - 1]} (${data.labels.length} ч)`;
+    document.getElementById('updated').textContent = 'обновлено в ' + new Date().toLocaleTimeString('ru-RU');
+  } catch (err) {
+    errorBox.textContent = err.message || 'Не удалось получить данные с сервера';
+    errorBox.classList.remove('d-none');
+  }
+}
+
+form.addEventListener('submit', event => { event.preventDefault(); update(); });
+document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
+  Object.entries(PRESETS[button.dataset.preset]).forEach(([key, value]) => { document.getElementById('in-' + key).value = value; });
+  update();
+}));
+update();
+</script>
+{% endblock %}

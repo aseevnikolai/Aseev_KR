@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'tasks.apps.TasksConfig',
+    'KR_Aseev.apps.KrAseevConfig',  # КР: мини-дашборд (Асеев Н.С.)
 ]
 
 MIDDLEWARE = [
