@@ -8,6 +8,8 @@
 <div class="page-head mb-3">
   <h1>Защита от потери данных при рассогласовании узлов хранилища</h1>
   <p>Тема 17 · паттерн «кворумная запись + журнал WAL + сверка реплик» · кластер из {{ nodes_total }} узлов, кворум — {{ quorum }}</p>
+  <!-- Изменение 2_Асеев (ветка vetka_aseev): легенда статусов для таблицы и графиков -->
+  <p class="mt-2">Статусы: <span class="badge-status" style="background: #73bf69">OK</span> норма · <span class="badge-status" style="background: #fade2a">WARN</span> предупреждение · <span class="badge-status" style="background: #f2495c">CRIT</span> критично — паттерн включает аварийную реакцию</p>
 </div>
 
 <!-- Строки для ввода данных: каждая строка — один показатель кластера по часам -->
